@@ -1,0 +1,69 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1783791575405,
+      "tag": "0000_past_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783837072360,
+      "tag": "0001_wild_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783863587043,
+      "tag": "0002_giant_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783950482283,
+      "tag": "0003_dear_starbolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783950772166,
+      "tag": "0004_melodic_paladin",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783961834229,
+      "tag": "0005_familiar_black_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784025985938,
+      "tag": "0006_quiet_mole_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784133390934,
+      "tag": "0007_overconfident_slyde",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784133899904,
+      "tag": "0008_complete_proemial_gods",
+      "breakpoints": true
+    }
+  ]
+}

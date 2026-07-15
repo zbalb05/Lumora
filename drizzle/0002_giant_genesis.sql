@@ -1,0 +1,1 @@
+ALTER TABLE `goals` ADD `created_at` text;
