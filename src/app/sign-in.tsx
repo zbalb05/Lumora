@@ -1,25 +1,62 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedPressable } from '@/components/animated-pressable';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/contexts/auth-context';
-import { useTheme } from '@/hooks/use-theme';
+
+type Mode = 'login' | 'signup' | 'forgot';
+
+// This screen intentionally ignores the app's light/dark theme setting and always renders the
+// same dark, brand-gradient look — an auth screen's identity should be consistent regardless of
+// system theme, matching the reference design it was built from.
+const palette = {
+  background: '#0B0A14',
+  card: '#FFFFFF14',
+  cardBorder: '#FFFFFF1F',
+  text: '#FFFFFF',
+  textSecondary: '#A8A4B8',
+  placeholder: '#726D85',
+};
 
 export default function SignInScreen() {
-  const theme = useTheme();
-  const { signInWithGoogle, signInWithEmail, error } = useAuth();
+  const { signInWithGoogle, signInWithPassword, signUpWithPassword, resetPassword, error } =
+    useAuth();
+
+  const [mode, setMode] = useState<Mode>('login');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [email, setEmail] = useState('');
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailSentTo, setEmailSentTo] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [confirmationSentTo, setConfirmationSentTo] = useState<string | null>(null);
+  const [resetSentTo, setResetSentTo] = useState<string | null>(null);
 
-  const busy = googleLoading || emailLoading;
+  const busy = googleLoading || submitting;
+
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setFormError(null);
+    setPassword('');
+    setConfirmPassword('');
+    setConfirmationSentTo(null);
+    setResetSentTo(null);
+  };
 
   const handleGoogle = async () => {
     setGoogleLoading(true);
@@ -30,119 +67,223 @@ export default function SignInScreen() {
     }
   };
 
-  const handleSendMagicLink = async () => {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setEmailLoading(true);
+  const handleSubmit = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setFormError('Enter your email.');
+      return;
+    }
+
+    if (mode === 'forgot') {
+      setSubmitting(true);
+      setFormError(null);
+      try {
+        const sent = await resetPassword(trimmedEmail);
+        if (sent) setResetSentTo(trimmedEmail);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!password) {
+      setFormError('Enter your password.');
+      return;
+    }
+    if (mode === 'signup' && password !== confirmPassword) {
+      setFormError('Passwords do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
     try {
-      const sent = await signInWithEmail(trimmed);
-      if (sent) setEmailSentTo(trimmed);
+      if (mode === 'login') {
+        await signInWithPassword(trimmedEmail, password);
+      } else {
+        const result = await signUpWithPassword(trimmedEmail, password);
+        if (result.success && result.needsConfirmation) setConfirmationSentTo(trimmedEmail);
+      }
     } finally {
-      setEmailLoading(false);
+      setSubmitting(false);
     }
   };
 
+  const title =
+    mode === 'login' ? 'Welcome back' : mode === 'signup' ? 'Welcome to Lumora' : 'Reset password';
+  const subtitle =
+    mode === 'forgot'
+      ? "Enter your email and we'll send you a link to reset your password."
+      : 'Sign in to sync your notes, flashcards, and quizzes across devices.';
+  const submitLabel = mode === 'login' ? 'Login' : mode === 'signup' ? 'Sign Up' : 'Send reset link';
+  const pendingCard = mode === 'signup' ? confirmationSentTo : mode === 'forgot' ? resetSentTo : null;
+  const shownError = formError ?? error;
+
   return (
-    <ThemedView style={styles.container}>
+    <View style={[styles.container, { backgroundColor: palette.background }]}>
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.content}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
             <LinearGradient
               colors={Brand.gradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.hero}>
               <View style={styles.heroIcon}>
-                <ThemedText style={styles.heroEmoji}>🎓</ThemedText>
+                <Text style={styles.heroEmoji}>🎓</Text>
               </View>
-              <ThemedText type="subtitle" style={styles.heroTitle}>
-                Welcome to Lumora
-              </ThemedText>
-              <ThemedText type="small" style={styles.heroSubtitle}>
-                Sign in to sync your notes, flashcards, and quizzes across devices.
-              </ThemedText>
+              <Text style={styles.heroTitle}>{title}</Text>
+              <Text style={styles.heroSubtitle}>{subtitle}</Text>
             </LinearGradient>
 
-            <AnimatedPressable
-              onPress={handleGoogle}
-              disabled={busy}
-              style={[styles.button, busy && styles.buttonDisabled]}>
-              <ThemedView type="backgroundElement" style={styles.buttonInner}>
-                {googleLoading ? (
-                  <ActivityIndicator />
-                ) : (
-                  <Ionicons name="logo-google" size={20} color="#EA4335" />
-                )}
-                <ThemedText type="smallBold">Continue with Google</ThemedText>
-              </ThemedView>
-            </AnimatedPressable>
-
-            <View style={styles.dividerRow}>
-              <View style={[styles.dividerLine, { backgroundColor: theme.backgroundSelected }]} />
-              <ThemedText type="small" themeColor="textSecondary">
-                or
-              </ThemedText>
-              <View style={[styles.dividerLine, { backgroundColor: theme.backgroundSelected }]} />
-            </View>
-
-            {emailSentTo ? (
-              <ThemedView type="backgroundElement" style={styles.emailSentCard}>
-                <ThemedText type="smallBold">Check your inbox</ThemedText>
-                <ThemedText themeColor="textSecondary">
-                  We sent a sign-in link to {emailSentTo}. Tap it on this device to finish signing
-                  in.
-                </ThemedText>
-                <AnimatedPressable onPress={() => setEmailSentTo(null)}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.useDifferentEmail}>
-                    Use a different email
-                  </ThemedText>
-                </AnimatedPressable>
-              </ThemedView>
+            {pendingCard ? (
+              <View style={[styles.card, styles.pendingCard]}>
+                <Text style={styles.cardTitle}>Check your inbox</Text>
+                <Text style={styles.cardBody}>
+                  {mode === 'signup'
+                    ? `We sent a confirmation link to ${pendingCard}. Tap it to finish creating your account.`
+                    : `We sent a password reset link to ${pendingCard}. Tap it on this device to set a new password.`}
+                </Text>
+                <Pressable onPress={() => switchMode('login')}>
+                  <Text style={styles.linkText}>Back to login</Text>
+                </Pressable>
+              </View>
             ) : (
-              <View style={styles.emailForm}>
-                <ThemedView type="backgroundElement" style={styles.emailInputWrap}>
-                  <TextInput
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="you@example.com"
-                    placeholderTextColor={theme.textSecondary}
-                    style={[styles.emailInput, { color: theme.text }]}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    editable={!busy}
-                    returnKeyType="send"
-                    onSubmitEditing={handleSendMagicLink}
-                  />
-                </ThemedView>
-                <AnimatedPressable
-                  onPress={handleSendMagicLink}
-                  disabled={busy || !email.trim()}
-                  style={[styles.button, (busy || !email.trim()) && styles.buttonDisabled]}>
-                  <View style={styles.emailButtonInner}>
-                    {emailLoading ? (
+              <View style={styles.form}>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Email</Text>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="mail-outline" size={18} color={palette.textSecondary} />
+                    <TextInput
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="you@example.com"
+                      placeholderTextColor={palette.placeholder}
+                      style={styles.input}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      editable={!busy}
+                    />
+                  </View>
+                </View>
+
+                {mode !== 'forgot' && (
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Password</Text>
+                    <View style={styles.inputRow}>
+                      <Ionicons name="lock-closed-outline" size={18} color={palette.textSecondary} />
+                      <TextInput
+                        value={password}
+                        onChangeText={setPassword}
+                        placeholder="••••••••"
+                        placeholderTextColor={palette.placeholder}
+                        style={styles.input}
+                        secureTextEntry={!showPassword}
+                        editable={!busy}
+                        returnKeyType={mode === 'signup' ? 'next' : 'send'}
+                        onSubmitEditing={mode === 'signup' ? undefined : handleSubmit}
+                      />
+                      <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
+                        <Ionicons
+                          name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                          size={18}
+                          color={palette.textSecondary}
+                        />
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {mode === 'signup' && (
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Confirm Password</Text>
+                    <View style={styles.inputRow}>
+                      <Ionicons name="lock-closed-outline" size={18} color={palette.textSecondary} />
+                      <TextInput
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                        placeholder="••••••••"
+                        placeholderTextColor={palette.placeholder}
+                        style={styles.input}
+                        secureTextEntry={!showPassword}
+                        editable={!busy}
+                        returnKeyType="send"
+                        onSubmitEditing={handleSubmit}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {mode === 'login' && (
+                  <Pressable
+                    onPress={() => switchMode('forgot')}
+                    style={styles.forgotRow}
+                    hitSlop={8}>
+                    <Text style={styles.linkText}>Forgot Password?</Text>
+                  </Pressable>
+                )}
+
+                {shownError && <Text style={styles.errorText}>{shownError}</Text>}
+
+                <AnimatedPressable onPress={handleSubmit} disabled={busy}>
+                  <LinearGradient
+                    colors={Brand.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.submitButton, busy && styles.disabled]}>
+                    {submitting ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
-                      <ThemedText type="smallBold" style={styles.emailButtonLabel}>
-                        Send magic link
-                      </ThemedText>
+                      <Text style={styles.submitLabel}>{submitLabel}</Text>
                     )}
-                  </View>
+                  </LinearGradient>
                 </AnimatedPressable>
+
+                {mode !== 'forgot' && (
+                  <>
+                    <View style={styles.dividerRow}>
+                      <View style={styles.dividerLine} />
+                      <Text style={styles.dividerText}>Or</Text>
+                      <View style={styles.dividerLine} />
+                    </View>
+
+                    <AnimatedPressable onPress={handleGoogle} disabled={busy}>
+                      <View style={[styles.googleButton, busy && styles.disabled]}>
+                        {googleLoading ? (
+                          <ActivityIndicator color={palette.text} />
+                        ) : (
+                          <>
+                            <Ionicons name="logo-google" size={18} color="#EA4335" />
+                            <Text style={styles.googleLabel}>Google</Text>
+                          </>
+                        )}
+                      </View>
+                    </AnimatedPressable>
+                  </>
+                )}
+
+                <Pressable
+                  onPress={() => switchMode(mode === 'signup' ? 'login' : 'signup')}
+                  style={styles.switchRow}>
+                  <Text style={styles.switchText}>
+                    {mode === 'signup' ? 'Already have an account? ' : "Don't have an account? "}
+                    <Text style={styles.linkText}>
+                      {mode === 'signup' ? 'Login' : 'Create an account'}
+                    </Text>
+                  </Text>
+                </Pressable>
               </View>
             )}
-
-            {error && (
-              <ThemedText themeColor="textSecondary" style={styles.error}>
-                {error}
-              </ThemedText>
-            )}
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -156,10 +297,11 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.five,
     gap: Spacing.four,
     alignSelf: 'center',
     width: '100%',
@@ -186,25 +328,81 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
     textAlign: 'center',
   },
   heroSubtitle: {
     color: '#F3E8FF',
     textAlign: 'center',
   },
-  button: {
+  card: {
+    padding: Spacing.four,
     borderRadius: Radius.card,
+    gap: Spacing.two,
   },
-  buttonDisabled: {
-    opacity: 0.6,
+  pendingCard: {
+    backgroundColor: palette.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.cardBorder,
   },
-  buttonInner: {
+  cardTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cardBody: {
+    color: palette.textSecondary,
+    lineHeight: 20,
+  },
+  form: {
+    gap: Spacing.three,
+  },
+  fieldGroup: {
+    gap: Spacing.one,
+  },
+  fieldLabel: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: Spacing.two,
+    backgroundColor: palette.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.cardBorder,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Platform.select({ ios: Spacing.three, default: Spacing.two }),
+  },
+  input: {
+    flex: 1,
+    color: palette.text,
+    fontSize: 16,
+    paddingVertical: 0,
+  },
+  forgotRow: {
+    alignSelf: 'flex-end',
+  },
+  errorText: {
+    color: Brand.danger,
+    textAlign: 'center',
+  },
+  submitButton: {
+    borderRadius: Radius.pill,
     paddingVertical: Spacing.three,
-    borderRadius: Radius.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  disabled: {
+    opacity: 0.6,
   },
   dividerRow: {
     flexDirection: 'row',
@@ -214,38 +412,38 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
+    backgroundColor: palette.cardBorder,
   },
-  emailForm: {
-    gap: Spacing.three,
+  dividerText: {
+    color: palette.textSecondary,
+    fontSize: 13,
   },
-  emailInputWrap: {
-    borderRadius: Radius.card,
-  },
-  emailInput: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    fontSize: 16,
-  },
-  emailButtonInner: {
+  googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Radius.card,
-    backgroundColor: Brand.accent,
-  },
-  emailButtonLabel: {
-    color: '#FFFFFF',
-  },
-  emailSentCard: {
-    padding: Spacing.three,
-    borderRadius: Radius.card,
     gap: Spacing.two,
+    backgroundColor: palette.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.cardBorder,
+    borderRadius: Radius.pill,
+    paddingVertical: Spacing.three,
   },
-  useDifferentEmail: {
-    textDecorationLine: 'underline',
+  googleLabel: {
+    color: palette.text,
+    fontSize: 15,
+    fontWeight: '600',
   },
-  error: {
-    textAlign: 'center',
+  switchRow: {
+    alignItems: 'center',
+    marginTop: Spacing.one,
+  },
+  switchText: {
+    color: palette.textSecondary,
+    fontSize: 14,
+  },
+  linkText: {
+    color: '#C4B5FD',
+    fontWeight: '700',
   },
 });

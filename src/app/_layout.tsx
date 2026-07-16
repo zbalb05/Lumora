@@ -79,7 +79,7 @@ function AuthGate() {
 
 function AppShell() {
   const colorScheme = useColorScheme();
-  const { status } = useAuth();
+  const { status, passwordRecovery } = useAuth();
 
   useEffect(() => {
     deleteOrphanedStudySets();
@@ -88,12 +88,15 @@ function AppShell() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Protected guard={status === 'signed-in'}>
+        <Stack.Protected guard={passwordRecovery}>
+          <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={status === 'signed-in' && !passwordRecovery}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="document/[id]" options={{ title: '' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         </Stack.Protected>
-        <Stack.Protected guard={status !== 'signed-in'}>
+        <Stack.Protected guard={status !== 'signed-in' && !passwordRecovery}>
           <Stack.Screen name="sign-in" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
