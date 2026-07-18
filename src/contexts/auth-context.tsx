@@ -24,7 +24,7 @@ const AuthContext = createContext<{
   passwordRecovery: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<boolean>;
-  signUpWithPassword: (email: string, password: string) => Promise<SignUpResult>;
+  signUpWithPassword: (email: string, password: string, fullName: string) => Promise<SignUpResult>;
   resetPassword: (email: string) => Promise<boolean>;
   updatePassword: (password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -157,14 +157,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUpWithPassword = async (email: string, password: string): Promise<SignUpResult> => {
+  const signUpWithPassword = async (
+    email: string,
+    password: string,
+    fullName: string
+  ): Promise<SignUpResult> => {
     setError(null);
     try {
       const redirectTo = Linking.createURL('/');
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: redirectTo },
+        options: { emailRedirectTo: redirectTo, data: { full_name: fullName } },
       });
       if (signUpError) {
         setError(signUpError.message);

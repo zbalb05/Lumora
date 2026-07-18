@@ -38,6 +38,7 @@ export default function SignInScreen() {
 
   const [mode, setMode] = useState<Mode>('login');
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -52,6 +53,7 @@ export default function SignInScreen() {
   const switchMode = (next: Mode) => {
     setMode(next);
     setFormError(null);
+    setFullName('');
     setPassword('');
     setConfirmPassword('');
     setConfirmationSentTo(null);
@@ -90,6 +92,11 @@ export default function SignInScreen() {
       setFormError('Enter your password.');
       return;
     }
+    const trimmedName = fullName.trim();
+    if (mode === 'signup' && !trimmedName) {
+      setFormError('Enter your name.');
+      return;
+    }
     if (mode === 'signup' && password !== confirmPassword) {
       setFormError('Passwords do not match.');
       return;
@@ -101,7 +108,7 @@ export default function SignInScreen() {
       if (mode === 'login') {
         await signInWithPassword(trimmedEmail, password);
       } else {
-        const result = await signUpWithPassword(trimmedEmail, password);
+        const result = await signUpWithPassword(trimmedEmail, password, trimmedName);
         if (result.success && result.needsConfirmation) setConfirmationSentTo(trimmedEmail);
       }
     } finally {
@@ -155,6 +162,25 @@ export default function SignInScreen() {
               </View>
             ) : (
               <View style={styles.form}>
+                {mode === 'signup' && (
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Name</Text>
+                    <View style={styles.inputRow}>
+                      <Ionicons name="person-outline" size={18} color={palette.textSecondary} />
+                      <TextInput
+                        value={fullName}
+                        onChangeText={setFullName}
+                        placeholder="Your name"
+                        placeholderTextColor={palette.placeholder}
+                        style={styles.input}
+                        autoCapitalize="words"
+                        editable={!busy}
+                        returnKeyType="next"
+                      />
+                    </View>
+                  </View>
+                )}
+
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Email</Text>
                   <View style={styles.inputRow}>
