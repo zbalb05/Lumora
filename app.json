@@ -61,6 +61,12 @@
         "projectId": "e14a2d64-feca-4fde-bc5e-bf297655b0e6"
       }
     },
-    "owner": "lumora-founder"
+    "owner": "lumora-founder",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e14a2d64-feca-4fde-bc5e-bf297655b0e6"
+    }
   }
 }
