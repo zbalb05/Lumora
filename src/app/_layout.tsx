@@ -10,10 +10,12 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
+import { SubscriptionProvider, useSubscription } from '@/contexts/subscription-context';
 import { ThemePreferenceProvider } from '@/contexts/theme-preference';
 import { db } from '@/db/client';
 import { deleteOrphanedStudySets } from '@/db/queries/study-sets';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { purchasesConfigError } from '@/services/purchases';
 import { supabaseConfigError } from '@/services/supabase';
 import migrations from '../../drizzle/migrations';
 
@@ -52,9 +54,11 @@ export default function RootLayout() {
         </ThemedView>
       ) : (
         <AuthProvider>
-          <ThemePreferenceProvider>
-            <AuthGate />
-          </ThemePreferenceProvider>
+          <SubscriptionProvider>
+            <ThemePreferenceProvider>
+              <AuthGate />
+            </ThemePreferenceProvider>
+          </SubscriptionProvider>
         </AuthProvider>
       )}
     </GestureHandlerRootView>
@@ -80,10 +84,36 @@ function AuthGate() {
 function AppShell() {
   const colorScheme = useColorScheme();
   const { status, passwordRecovery } = useAuth();
+  const { status: subscriptionStatus } = useSubscription();
 
   useEffect(() => {
     deleteOrphanedStudySets();
   }, []);
+
+  const needsSubscriptionCheck = status === 'signed-in' && !passwordRecovery;
+
+  if (needsSubscriptionCheck && purchasesConfigError) {
+    return (
+      <ThemedView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 }}>
+        <ThemedText type="subtitle">Subscriptions not configured</ThemedText>
+        <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
+          {purchasesConfigError}
+        </ThemedText>
+      </ThemedView>
+    );
+  }
+
+  // Waits for RevenueCat's customer info before deciding tabs vs. paywall, so a subscribed user
+  // never sees a flash of the paywall while the entitlement check is still in flight.
+  if (needsSubscriptionCheck && subscriptionStatus === 'loading') {
+    return (
+      <ThemedView style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </ThemedView>
+    );
+  }
+
+  const subscribed = subscriptionStatus === 'subscribed';
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -91,10 +121,13 @@ function AppShell() {
         <Stack.Protected guard={passwordRecovery}>
           <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         </Stack.Protected>
-        <Stack.Protected guard={status === 'signed-in' && !passwordRecovery}>
+        <Stack.Protected guard={needsSubscriptionCheck && subscribed}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="document/[id]" options={{ title: '' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={needsSubscriptionCheck && !subscribed}>
+          <Stack.Screen name="paywall" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={status !== 'signed-in' && !passwordRecovery}>
           <Stack.Screen name="sign-in" options={{ headerShown: false }} />
