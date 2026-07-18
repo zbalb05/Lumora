@@ -44,23 +44,33 @@ const AuthContext = createContext<{
 
 // Supabase's redirect can carry the session tokens in either the query string or the URL
 // fragment depending on flow — getQueryParams handles both, a hand-rolled parser wouldn't.
-// `recovery` distinguishes a password-reset link (type=recovery) from every other redirect
-// (Google OAuth, signup email confirmation), all of which land here since they share this deep
-// link handler.
+// It can also arrive as a PKCE `code` param instead of raw tokens (the modern default flow for
+// email-based links like password recovery), which needs a separate exchange call rather than
+// setSession. `recovery` distinguishes a password-reset link (type=recovery) from every other
+// redirect (Google OAuth, signup email confirmation), all of which land here since they share
+// this deep link handler.
 async function applySessionFromUrl(url: string): Promise<{ applied: boolean; recovery: boolean }> {
   const { params, errorCode } = QueryParams.getQueryParams(url);
   if (errorCode) throw new Error(errorCode);
 
   const accessToken = params.access_token;
   const refreshToken = params.refresh_token;
-  if (!accessToken || !refreshToken) return { applied: false, recovery: false };
+  if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+    return { applied: true, recovery: params.type === 'recovery' };
+  }
 
-  const { error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
-  if (error) throw error;
-  return { applied: true, recovery: params.type === 'recovery' };
+  if (params.code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(params.code);
+    if (error) throw error;
+    return { applied: true, recovery: params.type === 'recovery' };
+  }
+
+  return { applied: false, recovery: false };
 }
 
 async function performGoogleOAuth() {
