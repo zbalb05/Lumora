@@ -144,52 +144,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithPassword = async (email: string, password: string) => {
     setError(null);
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) {
-      setError(signInError.message);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        setError(signInError.message);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed.');
       return false;
     }
-    return true;
   };
 
   const signUpWithPassword = async (email: string, password: string): Promise<SignUpResult> => {
     setError(null);
-    const redirectTo = Linking.createURL('/');
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: redirectTo },
-    });
-    if (signUpError) {
-      setError(signUpError.message);
+    try {
+      const redirectTo = Linking.createURL('/');
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: redirectTo },
+      });
+      if (signUpError) {
+        setError(signUpError.message);
+        return { success: false, needsConfirmation: false };
+      }
+      // If the project requires email confirmation, signUp() succeeds but returns no session yet —
+      // the user only gets one once they tap the confirmation link (handled by the deep link effect
+      // above, same as any other redirect).
+      return { success: true, needsConfirmation: !data.session };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-up failed.');
       return { success: false, needsConfirmation: false };
     }
-    // If the project requires email confirmation, signUp() succeeds but returns no session yet —
-    // the user only gets one once they tap the confirmation link (handled by the deep link effect
-    // above, same as any other redirect).
-    return { success: true, needsConfirmation: !data.session };
   };
 
   const resetPassword = async (email: string) => {
     setError(null);
-    const redirectTo = Linking.createURL('/');
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    if (resetError) {
-      setError(resetError.message);
+    try {
+      const redirectTo = Linking.createURL('/');
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (resetError) {
+        setError(resetError.message);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send reset email.');
       return false;
     }
-    return true;
   };
 
   const updatePassword = async (password: string) => {
     setError(null);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    if (updateError) {
-      setError(updateError.message);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) {
+        setError(updateError.message);
+        return false;
+      }
+      setPasswordRecovery(false);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update password.');
       return false;
     }
-    setPasswordRecovery(false);
-    return true;
   };
 
   const signOut = async () => {
