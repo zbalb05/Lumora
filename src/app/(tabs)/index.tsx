@@ -33,6 +33,7 @@ const QUICK_ACTIONS = [
     badge: BadgeColors.purple,
     href: { pathname: '/library' as const, params: { action: 'camera' } },
   },
+  { icon: '🎙️', label: 'Record', badge: BadgeColors.purple, href: { pathname: '/record-lecture' as const } },
   { icon: '💬', label: 'Ask AI', badge: BadgeColors.purple, href: { pathname: '/chat' as const } },
 ];
 

@@ -125,6 +125,7 @@ function AppShell() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="document/[id]" options={{ title: '' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="record-lecture" options={{ title: 'Record Lecture' }} />
         </Stack.Protected>
         <Stack.Protected guard={needsSubscriptionCheck && !subscribed}>
           <Stack.Screen name="paywall" options={{ headerShown: false }} />

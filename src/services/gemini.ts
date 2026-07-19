@@ -1,4 +1,12 @@
-import { GoogleGenAI, Type, createPartFromBase64, createUserContent } from '@google/genai';
+import {
+  FileState,
+  GoogleGenAI,
+  Type,
+  createPartFromBase64,
+  createPartFromUri,
+  createUserContent,
+  type Part,
+} from '@google/genai';
 
 // 'gemini-flash-latest' is Google's rolling alias for the current stable flash-tier model —
 // pinned version numbers (e.g. gemini-2.5-flash) get sunset for new API keys over time.
@@ -112,6 +120,53 @@ export interface StudyMaterials {
   quiz: GeneratedQuizQuestion[];
 }
 
+// Shared by generateStudyMaterials and generateLectureStudyMaterials — same output shape either way.
+const STUDY_MATERIALS_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    taggedText: { type: Type.STRING },
+    summary: { type: Type.STRING },
+    flashcards: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          front: { type: Type.STRING },
+          back: { type: Type.STRING },
+        },
+        required: ['front', 'back'],
+      },
+    },
+    quiz: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          prompt: { type: Type.STRING },
+          choices: { type: Type.ARRAY, items: { type: Type.STRING } },
+          correctChoiceIndex: { type: Type.INTEGER },
+          explanation: { type: Type.STRING },
+        },
+        required: ['prompt', 'choices', 'correctChoiceIndex', 'explanation'],
+      },
+    },
+  },
+  required: ['taggedText', 'summary', 'flashcards', 'quiz'],
+};
+
+function parseStudyMaterials(text: string | undefined, emptyMessage: string): StudyMaterials {
+  const parsed = JSON.parse(text ?? '{}');
+  if (!parsed.taggedText || !parsed.summary) {
+    throw new Error(emptyMessage);
+  }
+  return {
+    taggedText: parsed.taggedText,
+    summary: parsed.summary,
+    flashcards: parsed.flashcards ?? [],
+    quiz: parsed.quiz ?? [],
+  };
+}
+
 /**
  * Extracts the uploaded document AND generates its summary, flashcards, and quiz in one Gemini
  * call. This used to be two sequential round trips (extract text, then feed that text back in
@@ -144,51 +199,89 @@ export async function generateStudyMaterials(base64: string, mimeType: string): 
     config: {
       ...NO_THINKING,
       responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          taggedText: { type: Type.STRING },
-          summary: { type: Type.STRING },
-          flashcards: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                front: { type: Type.STRING },
-                back: { type: Type.STRING },
-              },
-              required: ['front', 'back'],
-            },
-          },
-          quiz: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                prompt: { type: Type.STRING },
-                choices: { type: Type.ARRAY, items: { type: Type.STRING } },
-                correctChoiceIndex: { type: Type.INTEGER },
-                explanation: { type: Type.STRING },
-              },
-              required: ['prompt', 'choices', 'correctChoiceIndex', 'explanation'],
-            },
-          },
-        },
-        required: ['taggedText', 'summary', 'flashcards', 'quiz'],
-      },
+      responseSchema: STUDY_MATERIALS_SCHEMA,
     },
   });
 
-  const parsed = JSON.parse(response.text ?? '{}');
-  if (!parsed.taggedText || !parsed.summary) {
-    throw new Error('Gemini returned no study material for this upload.');
+  return parseStudyMaterials(response.text, 'Gemini returned no study material for this upload.');
+}
+
+/** Polls a just-uploaded Gemini file until it's ready to reference in a generateContent call —
+ * required for audio/video, which aren't immediately usable the moment upload() resolves. */
+async function uploadAndAwaitActive(ai: GoogleGenAI, file: Blob, mimeType: string) {
+  let uploaded = await ai.files.upload({ file, config: { mimeType } });
+  const deadline = Date.now() + 5 * 60_000;
+  while (uploaded.state === FileState.PROCESSING) {
+    if (Date.now() > deadline) {
+      throw new Error('Gemini took too long to process the recording. Try again in a moment.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    uploaded = await ai.files.get({ name: uploaded.name! });
   }
-  return {
-    taggedText: parsed.taggedText,
-    summary: parsed.summary,
-    flashcards: parsed.flashcards ?? [],
-    quiz: parsed.quiz ?? [],
-  };
+  if (uploaded.state === FileState.FAILED || !uploaded.uri || !uploaded.mimeType) {
+    throw new Error('Gemini could not process the uploaded recording.');
+  }
+  return uploaded;
+}
+
+/**
+ * Cross-references a recorded lecture with its optional slides in one multimodal call, tagging
+ * spoken content with [Timestamp: MM:SS] and slide content with [Page: N] in the same taggedText
+ * output. Audio goes through the Files API (uploadAndAwaitActive) rather than inline base64 like
+ * generateStudyMaterials — a real lecture recording routinely exceeds Gemini's 20MB inline-request
+ * cap, while the (much smaller) slides file stays inline alongside it in the same request.
+ */
+export async function generateLectureStudyMaterials(
+  audioUri: string,
+  audioMimeType: string,
+  slides?: { base64: string; mimeType: string }
+): Promise<StudyMaterials> {
+  const ai = client();
+  const audioBlob = await (await fetch(audioUri)).blob();
+  const file = await uploadAndAwaitActive(ai, audioBlob, audioMimeType);
+
+  const parts: (Part | string)[] = [createPartFromUri(file.uri!, file.mimeType!)];
+  if (slides) parts.push(createPartFromBase64(slides.base64, slides.mimeType));
+  parts.push(
+    slides
+      ? 'The first attachment is an audio recording of a live lecture. The second attachment is ' +
+          'that lecture\'s slides (PDF or images). Cross-reference them: when the speaker discusses ' +
+          'content from a specific slide, tag that passage with the slide\'s "[Page: N]"; for spoken ' +
+          'content with no matching slide (asides, Q&A, extra explanation), tag it with ' +
+          '"[Timestamp: MM:SS]" instead, one tag per line, in chronological (spoken) order. Note ' +
+          'explicitly in the notes anywhere the spoken lecture adds to, corrects, or contradicts a slide.'
+      : 'This is an audio recording of a live lecture with no slides attached. Produce a condensed, ' +
+          'topic-segmented account of what was said — not a verbatim transcript — tagging the start ' +
+          'of each new topic or major point on its own line as "[Timestamp: MM:SS]" (mm:ss from the ' +
+          'start of the recording).'
+  );
+  parts.push(
+    'Put that tagged text verbatim in "taggedText". Then, from that same text, produce three more ' +
+      'things, keeping each concise so the response stays fast to generate:\n' +
+      '1) "summary": a cohesive, hierarchical summary using ### headers and "- " bullet points ' +
+      '(aim for well under half the length of the source), preserving [Page:]/[Timestamp:] tags ' +
+      'inline so each point stays traceable to its source. Write plain text within headers and ' +
+      'bullets — no markdown emphasis like **bold** or *italic*.\n' +
+      '2) "flashcards": at most 15 cards. Scan the text for the single most important named ' +
+      'entities, strict definitions, and causal relationships, and produce front/back ' +
+      'question-answer pairs, one per fact, skipping anything trivial or ambiguous.\n' +
+      '3) "quiz": 5-8 questions. Review the most critical overarching themes and draft a mix of ' +
+      'multiple-choice and true/false questions based strictly on facts present in the text ' +
+      '(true/false questions use exactly two choices: "True" and "False"), each with the correct ' +
+      'choice index and a brief explanation.'
+  );
+
+  const response = await generateContent(ai, {
+    model: MODEL,
+    contents: createUserContent(parts),
+    config: {
+      ...NO_THINKING,
+      responseMimeType: 'application/json',
+      responseSchema: STUDY_MATERIALS_SCHEMA,
+    },
+  });
+
+  return parseStudyMaterials(response.text, 'Gemini returned no study material for this recording.');
 }
 
 export interface ChatTurn {

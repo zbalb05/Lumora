@@ -1,7 +1,4 @@
-import * as DocumentPicker from 'expo-document-picker';
-import { EncodingType, readAsStringAsync } from 'expo-file-system/legacy';
 import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,6 +26,7 @@ import { ingestFile, type PickedFile } from '@/services/ingestion';
 import { pullRemoteChanges, pushPendingChanges } from '@/services/sync';
 import { toDateKey } from '@/utils/calendar';
 import { sourceTypeIcon } from '@/utils/document-icon';
+import { pickDocument, pickPhoto } from '@/utils/pick-file';
 
 type DocumentRow = typeof documents.$inferSelect;
 
@@ -119,40 +117,13 @@ export default function LibraryScreen() {
   };
 
   const handleUpload = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/*'],
-    });
-    if (result.canceled) return;
-
-    const asset = result.assets[0];
-    await runIngestion({
-      uri: asset.uri,
-      name: asset.name,
-      mimeType: asset.mimeType ?? 'application/octet-stream',
-      base64: () => readAsStringAsync(asset.uri, { encoding: EncodingType.Base64 }),
-    });
+    const file = await pickDocument();
+    if (file) await runIngestion(file);
   };
 
   const handleCamera = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(
-        'Camera access needed',
-        'Enable camera access for Lumora in your device settings to photograph study material.'
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (result.canceled) return;
-
-    const asset = result.assets[0];
-    await runIngestion({
-      uri: asset.uri,
-      name: asset.fileName ?? `Photo ${new Date().toLocaleDateString()}`,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-      base64: () => readAsStringAsync(asset.uri, { encoding: EncodingType.Base64 }),
-    });
+    const file = await pickPhoto();
+    if (file) await runIngestion(file);
   };
 
   useEffect(() => {
@@ -206,6 +177,12 @@ export default function LibraryScreen() {
                   <View style={styles.addMenuRow}>
                     <ThemedText style={styles.addMenuIcon}>📷</ThemedText>
                     <ThemedText type="smallBold">Take photo</ThemedText>
+                  </View>
+                </AnimatedPressable>
+                <AnimatedPressable onPress={() => closeMenuThen(() => router.push('/record-lecture'))}>
+                  <View style={styles.addMenuRow}>
+                    <ThemedText style={styles.addMenuIcon}>🎙️</ThemedText>
+                    <ThemedText type="smallBold">Record lecture</ThemedText>
                   </View>
                 </AnimatedPressable>
               </ThemedView>

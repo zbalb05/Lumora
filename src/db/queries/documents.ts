@@ -7,6 +7,7 @@ import { enqueueSync } from '@/db/sync/enqueue';
 
 export type DocumentStatus = (typeof documents.$inferSelect)['status'];
 export type DocumentSourceType = (typeof documents.$inferSelect)['sourceType'];
+export type DocumentSlidesSourceType = NonNullable<(typeof documents.$inferSelect)['slidesSourceType']>;
 
 export async function listAllDocuments() {
   return db.select().from(documents).orderBy(desc(documents.createdAt));
@@ -30,6 +31,8 @@ export async function createDocument(input: {
   title: string;
   sourceType: DocumentSourceType;
   uri: string;
+  slidesUri?: string | null;
+  slidesSourceType?: DocumentSlidesSourceType | null;
 }) {
   const [row] = await db
     .insert(documents)

@@ -16,9 +16,11 @@ export const documents = sqliteTable('documents', {
     .references(() => studySets.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   sourceType: text('source_type', {
-    enum: ['pdf', 'image', 'text'],
+    enum: ['pdf', 'image', 'text', 'audio'],
   }).notNull(),
   uri: text('uri').notNull(),
+  slidesUri: text('slides_uri'),
+  slidesSourceType: text('slides_source_type', { enum: ['pdf', 'image'] }),
   status: text('status', { enum: ['pending', 'processing', 'ready', 'error'] })
     .notNull()
     .default('pending'),
